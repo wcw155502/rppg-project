@@ -1,0 +1,85 @@
+# ============================================================
+
+input_pipeline:
+  target_fps: 30                   # 所有rPPG输入统一重采样到该固定帧率
+  queue_size: 3                    # 只保留很短的低延迟缓冲，避免处理落后后画面越来越慢
+  max_time_gap_ms: 150             # 仅真实时间差超过150ms才重置；短时丢帧会按时间戳补齐
+  camera:
+    width: 1280
+    height: 720
+    warmup_sec: 2.0                # 等待摄像头自动曝光初步稳定
+    fourcc: "MJPG"
+    lock_auto_exposure: false      # 各摄像头后端差异大，确认支持后再开启
+    lock_white_balance: false
+  face:
+    aligned_size: 144              # 五点关键点对齐后的固定人脸尺寸
+    model_bbox_scale: 1.5          # EfficientPhys独立输入区域扩大1.5倍；POS ROI不受影响
+    lost_timeout_sec: 0.35
+    identity_iou_threshold: 0.30
+    warmup_sec: 2.0                # 新脸出现后先积累稳定输入，不立即测量
+    detect_every_n_frames: 10      # 中间帧用五点光流传播，CPU下约每秒检测3次
+    max_flow_error: 20.0           # 光流误差过大时立即重新检测
+    show_aligned_face: true        # 在主画面右上角嵌入模型框和POS额头/双颊ROI
+    max_abs_yaw: 0.45              # 转头过大时停止使用错误脸颊ROI
+  quality:
+    min_brightness: 35
+    max_brightness: 220
+    max_overexposed_ratio: 0.12
+    max_underexposed_ratio: 0.20
+    min_sharpness: 20
+    max_motion: 25
+    min_skin_ratio: 0.15
+  diagnostics:
+    enabled: false
+    output_dir: "outputs/debug"
+    save_source_video: false
+    save_aligned_face_video: true
+# rPPG 工业落地 推理配置
+# ============================================================
+
+face_detector:
+  onnx_path: "onnx/scrfd_10g_bnkps_shape640x640.onnx"
+  input_size: [640, 640]          # 与onnx文件名一致，务必对应
+  det_thresh: 0.5
+  nms_thresh: 0.4
+  detect_every_n_frames: 8         # 每N帧做一次真实检测，中间用跟踪器
+  bbox_smooth_alpha: 0.6           # EMA平滑系数，越大越平滑但越滞后
+  provider: "auto"                 # 有CUDA版ONNX Runtime时自动用GPU，否则回退CPU
+
+rppg_model:
+  name: "EfficientPhys"
+  enabled: true                    # RTX 4060实测单次约24ms；需使用mhyEEG CUDA环境
+  weight_path: "checkpoints/SCAMPS_EfficientPhys.pth"
+  device: "cuda"                   # cuda / cpu
+  img_size: 72                     # 需与训练config一致，务必核对
+  frame_depth: 20                  # EfficientPhys训练时的frame_depth，务必核对
+  data_type: ["Standardized"]      # EfficientPhys只需Standardized，不需要DiffNormalized双通道
+  chunk_length: 181                # 必须满足 (chunk_length-1) % frame_depth == 0，即181,201,161等
+  stride: 40                       # 滑窗步长，必须 < chunk_length-1(模型输出长度)，越小越实时但计算量越大
+  bbox_scale: 1.2                  # EfficientPhys独立输入框相对检测框的扩展倍数
+
+signal_processing:
+  fs: 30                           # 采集帧率，需与摄像头实际帧率一致
+  bandpass_low_hz: 0.7              # 对应42 bpm
+  bandpass_high_hz: 2.5             # 对应150 bpm，人群不同可调整
+  filter_order: 3
+  sqi_threshold: 0.3                # 低于该值的窗口视为低质量，不输出
+  bvp_window_sec: 10                # FFT估计用的信号窗口长度(秒)，越长越稳定但越滞后
+  update_interval_sec: 2             # HR显示结果的更新间隔(秒)，不是每帧都重算
+
+fusion:
+  use_traditional_fallback: true    # 是否用POS算法做交叉验证/兜底
+  rois: ["forehead", "cheek_l", "cheek_r"]
+  min_valid_rois: 1                 # 至少多少个ROI给出有效信号才输出
+  min_skin_ratio: 0.25              # 单帧ROI内最少肤色像素比例，低于此值视为遮挡
+  min_valid_frame_ratio: 0.7        # POS窗口内至少70%的帧未被遮挡，否则丢弃该ROI
+
+smoother:
+  type: "kalman"                    # kalman / moving_average
+  process_var: 0.5
+  meas_var: 4.0
+
+runtime:
+  log_level: "INFO"
+  save_debug_signal: false
+  debug_output_dir: "outputs/debug"

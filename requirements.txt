@@ -1,0 +1,7 @@
+torch>=2.0.0
+onnxruntime-gpu>=1.15.0   # 若无GPU改为 onnxruntime
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0   # cv2.legacy.TrackerKCF_create 需要这个包
+numpy>=1.24.0
+scipy>=1.10.0
+pyyaml>=6.0
