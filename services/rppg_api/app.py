@@ -129,8 +129,12 @@ async def inference(websocket: WebSocket, session_id: str):
     latest_frame: asyncio.Queue[bytes] = asyncio.Queue(maxsize=1)
 
     async def receive_frames():
+        received = 0
         while True:
             payload = await websocket.receive_bytes()
+            received += 1
+            if received == 1 or received % 100 == 0:
+                logger.info("Received inference frame bytes: session=%s count=%d size=%d", session_id, received, len(payload))
             if latest_frame.full():
                 latest_frame.get_nowait()
             latest_frame.put_nowait(payload)
@@ -139,6 +143,7 @@ async def inference(websocket: WebSocket, session_id: str):
         while True:
             payload = await latest_frame.get()
             try:
+                logger.debug("Processing inference frame: session=%s size=%d", session_id, len(payload))
                 result = await asyncio.to_thread(worker.process_jpeg, payload)
                 if result is not None:
                     result["sessionId"] = session_id
