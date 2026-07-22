@@ -39,6 +39,7 @@ class MeasurementWorker:
         self.input_pipeline = TrustedInputPipeline(config, detector=self.pipeline.detector)
         self.frame_id = 0
         self.last_preview_ns = 0
+        self.last_input_status = None
 
     def process_jpeg(self, payload: bytes):
         frame = cv2.imdecode(np.frombuffer(payload, dtype=np.uint8), cv2.IMREAD_COLOR)
@@ -46,6 +47,8 @@ class MeasurementWorker:
             raise ValueError("invalid JPEG frame")
         timestamp_ns = time.monotonic_ns()
         self.frame_id += 1
+        if self.frame_id == 1:
+            logger.info("Received first browser frame: %dx%d, %d bytes", frame.shape[1], frame.shape[0], len(payload))
         items = self.input_pipeline.process(FramePacket(frame, timestamp_ns, self.frame_id, source="web"))
         if not items:
             return None
@@ -59,7 +62,11 @@ class MeasurementWorker:
             "inputStatus": result.get("input_status", "unknown"),
             "confidence": self._confidence(result),
             "signalQuality": self._signal_quality(item),
+            "framesProcessed": self.frame_id,
         }
+        if item.status.value != self.last_input_status:
+            logger.info("Input status changed: session frame=%d status=%s", self.frame_id, item.status.value)
+            self.last_input_status = item.status.value
         if timestamp_ns - self.last_preview_ns >= PREVIEW_INTERVAL_NS:
             self.last_preview_ns = timestamp_ns
             message["posPreview"] = self._encode_preview(self._draw_pos(item))
@@ -131,10 +138,15 @@ async def inference(websocket: WebSocket, session_id: str):
     async def process_frames():
         while True:
             payload = await latest_frame.get()
-            result = await asyncio.to_thread(worker.process_jpeg, payload)
-            if result is not None:
-                result["sessionId"] = session_id
-                await websocket.send_text(json.dumps(result, separators=(",", ":")))
+            try:
+                result = await asyncio.to_thread(worker.process_jpeg, payload)
+                if result is not None:
+                    result["sessionId"] = session_id
+                    await websocket.send_text(json.dumps(result, separators=(",", ":")))
+            except Exception as error:
+                logger.exception("Frame processing failed for session %s", session_id)
+                await websocket.send_json({"type": "MEASUREMENT_ERROR", "sessionId": session_id, "timestamp": int(time.time() * 1000), "status": "FAILED", "message": str(error)})
+                raise
 
     receiver = asyncio.create_task(receive_frames())
     processor = asyncio.create_task(process_frames())
