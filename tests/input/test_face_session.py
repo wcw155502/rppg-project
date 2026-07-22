@@ -2,8 +2,8 @@ import unittest
 
 import numpy as np
 
-from input_pipeline.face_session import FaceSession, bbox_iou
-from input_pipeline.types import InputStatus
+from rppg.input.face_session import FaceSession, bbox_iou
+from rppg.input.types import InputStatus
 
 
 class FaceSessionTests(unittest.TestCase):

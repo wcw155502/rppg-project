@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from core.signal_processing import (
+from rppg.measurement.signal_processing import (
     bandpass_filter,
     signal_quality_index,
     signal_quality_index_legacy,

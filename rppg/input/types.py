@@ -50,6 +50,7 @@ class ProcessedInput:
     status: InputStatus
     frame: np.ndarray
     aligned_face: Optional[np.ndarray] = None
+    model_input_face: Optional[np.ndarray] = None
     rois: Dict[str, np.ndarray] = field(default_factory=dict)
     # 矩形ROI保存(x1,y1,x2,y2)，动态脸颊ROI保存(N,2)多边形顶点。
     roi_boxes: Dict[str, object] = field(default_factory=dict)

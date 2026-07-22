@@ -17,7 +17,7 @@ import os
 import numpy as np
 import torch
 
-from core.preprocess import preprocess_clip_for_efficientphys
+from rppg.measurement.preprocess import preprocess_clip_for_efficientphys
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,7 @@ class EfficientPhysRunner:
 
         self.model = self._load_model(model_py_path, weight_path)
         self.frame_buffer = []
+        self._has_emitted_initial_bvp = False
 
     def _validate_chunk_length(self, chunk_length, frame_depth):
         """
@@ -93,6 +94,27 @@ class EfficientPhysRunner:
         pred = self._infer_clip(clip)
         self.frame_buffer = self.frame_buffer[self.stride:]
         # 只返回本次滑窗步长对应的新增部分，避免下游重复处理重叠段
+        if pred is None:
+            return None
+        if not self._has_emitted_initial_bvp:
+            # First prediction spans the complete model context; do not discard it.
+            self._has_emitted_initial_bvp = True
+            return pred
+        # Later clips overlap, so append only the new tail.
+        return pred[-self.stride:]
+
+    def push_frame_legacy(self, roi_frame_bgr):
+        """旧冷启动逻辑，仅保留供历史结果对照；新代码不要调用。
+
+        原实现首次推理也只返回 ``stride`` 个样本，丢弃了前段有效 BVP，
+        因而需要额外等待多个推理轮次才能填满分析窗。
+        """
+        self.frame_buffer.append(roi_frame_bgr)
+        if len(self.frame_buffer) < self.chunk_length:
+            return None
+        clip = self.frame_buffer[-self.chunk_length:]
+        pred = self._infer_clip(clip)
+        self.frame_buffer = self.frame_buffer[self.stride:]
         return pred[-self.stride:] if pred is not None else None
 
     @torch.no_grad()
@@ -109,3 +131,4 @@ class EfficientPhysRunner:
 
     def reset(self):
         self.frame_buffer = []
+        self._has_emitted_initial_bvp = False

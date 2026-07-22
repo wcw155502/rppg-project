@@ -17,7 +17,7 @@ class TrustedInputPipeline:
         self.cfg = build_input_config(app_cfg)
         fd_cfg = app_cfg["face_detector"]
         if detector is None:
-            from core.face_detector import SCRFDDetector
+            from rppg.input.face_detector import SCRFDDetector
             detector = SCRFDDetector(
                 onnx_path=fd_cfg["onnx_path"],
                 input_size=tuple(fd_cfg["input_size"]),
@@ -96,8 +96,19 @@ class TrustedInputPipeline:
         rois, boxes, yaw = self.aligner.extract_rois(
             aligned,
             alignment["projected_landmarks"],
-            self.cfg["face"].get("model_bbox_scale", 1.0),
+            1.0,
         )
+        model_input, _ = self.aligner.align_efficientphys_context(
+            packet.frame,
+            landmarks,
+            self.cfg["face"].get("efficientphys_context_scale", 1.0),
+        )
+        if model_input is None:
+            model_input = aligned
+        # 只替换 EfficientPhys 输入；POS 的 forehead/cheek ROI 均来自标准对齐画布。
+        rois["model_full"] = model_input
+        size = model_input.shape[0]
+        boxes["model_full"] = (0, 0, size, size)
         max_abs_yaw = float(self.cfg["face"].get("max_abs_yaw", 0.45))
         if abs(yaw) > max_abs_yaw:
             quality.reasons = tuple(quality.reasons) + ("head_turned",)
@@ -109,6 +120,7 @@ class TrustedInputPipeline:
             status=status,
             frame=packet.frame,
             aligned_face=aligned,
+            model_input_face=model_input,
             rois=rois,
             roi_boxes=boxes,
             bbox=bbox,

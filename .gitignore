@@ -25,3 +25,7 @@ Thumbs.db
 # Local secrets
 .env
 .env.*
+
+# Backend is maintained as an independent Git repository.
+# Do not stage its files from the parent rPPG repository.
+/backend/

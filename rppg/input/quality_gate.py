@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 
-from core.fusion import extract_skin_rgb_mean
+from rppg.measurement.fusion import extract_skin_rgb_mean
 from .types import QualityReport
 
 

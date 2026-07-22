@@ -19,7 +19,7 @@ DEFAULT_CONFIG = {
     },
     "face": {
         "aligned_size": 144,
-        "model_bbox_scale": 1.5,
+        "efficientphys_context_scale": 1.3,
         "lost_timeout_sec": 0.35,
         "identity_iou_threshold": 0.30,
         "warmup_sec": 2.0,
@@ -44,20 +44,21 @@ DEFAULT_CONFIG = {
 
 def build_input_config(cfg):
     result = deepcopy(DEFAULT_CONFIG)
-    supplied = cfg.get("input_pipeline", {})
+    # ``input`` 是当前部署配置名；保留 ``input_pipeline`` 仅为旧配置兼容。
+    supplied = cfg.get("input", cfg.get("input_pipeline", {}))
     for key, value in supplied.items():
         if isinstance(value, dict) and isinstance(result.get(key), dict):
             result[key].update(value)
         else:
             result[key] = value
     if result["target_fps"] <= 0:
-        raise ValueError("input_pipeline.target_fps 必须大于0")
+        raise ValueError("input.target_fps 必须大于0")
     if result["queue_size"] < 2:
-        raise ValueError("input_pipeline.queue_size 必须至少为2")
+        raise ValueError("input.queue_size 必须至少为2")
     signal_fps = float(cfg.get("signal_processing", {}).get("fs", result["target_fps"]))
     if abs(float(result["target_fps"]) - signal_fps) > 1e-6:
         raise ValueError(
-            "input_pipeline.target_fps 必须与 signal_processing.fs 完全一致，"
+            "input.target_fps 必须与 signal_processing.fs 完全一致，"
             "否则心率频率轴会产生系统性偏差"
         )
     return result

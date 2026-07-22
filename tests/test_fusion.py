@@ -2,7 +2,7 @@ import unittest
 
 import numpy as np
 
-from core.fusion import extract_skin_rgb_mean, pos_algorithm
+from rppg.measurement.fusion import extract_skin_rgb_mean, pos_algorithm
 
 
 class SkinOcclusionTests(unittest.TestCase):

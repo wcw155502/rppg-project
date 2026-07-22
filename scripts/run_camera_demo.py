@@ -15,11 +15,11 @@ import numpy as np
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from utils.config_loader import load_config, setup_logging
-from pipeline.rppg_pipeline import RPPGPipeline
-from input_pipeline.camera_capture import AsyncCameraCapture
-from input_pipeline.config import build_input_config
-from input_pipeline.diagnostics import DiagnosticsRecorder
-from input_pipeline.processor import TrustedInputPipeline
+from rppg.input.camera_capture import AsyncCameraCapture
+from rppg.input.config import build_input_config
+from rppg.input.diagnostics import DiagnosticsRecorder
+from rppg.input.processor import TrustedInputPipeline
+from runtime.rppg_pipeline import RPPGPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -126,7 +126,11 @@ def run_trusted_demo(camera_id, cfg, pipeline):
                         (20, 92), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 100, 255), 1,
                     )
                 if input_cfg["face"].get("show_aligned_face", False) and last_item.aligned_face is not None:
-                    aligned_display = draw_aligned_rois(last_item.aligned_face, last_item.roi_boxes)
+                    aligned_display = draw_aligned_rois(
+                        last_item.aligned_face,
+                        last_item.roi_boxes,
+                        last_item.model_input_face,
+                    )
                     display_frame = overlay_aligned_face(display_frame, aligned_display)
                 cv2.imshow("rPPG Trusted Input Demo", display_frame)
                 if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -220,11 +224,10 @@ def run_legacy_demo(camera_id, cfg, pipeline):
         cv2.destroyAllWindows()
 
 
-def draw_aligned_rois(aligned_face, roi_boxes):
-    """显示算法实际使用的对齐人脸区域。"""
+def draw_aligned_rois(aligned_face, roi_boxes, model_input_face=None):
+    """在主画面嵌入 POS 标准画布与 EfficientPhys 扩展视野。"""
     display = aligned_face.copy()
     styles = {
-        "model_full": ((255, 255, 0), 2, "EfficientPhys"),
         "forehead": ((0, 255, 0), 1, "POS forehead"),
         "cheek_l": ((0, 165, 255), 1, "POS cheek L"),
         "cheek_r": ((0, 165, 255), 1, "POS cheek R"),
@@ -245,24 +248,42 @@ def draw_aligned_rois(aligned_face, roi_boxes):
             display, label, (int(x1) + 2, text_y),
             cv2.FONT_HERSHEY_SIMPLEX, 0.28, color, 1,
         )
-    return display
+    cv2.putText(display, "POS input", (4, display.shape[0] - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.32, (255, 255, 255), 1)
+    if model_input_face is None:
+        return display
+
+    model_display = model_input_face.copy()
+    height, width = model_display.shape[:2]
+    cv2.rectangle(model_display, (0, 0), (width - 1, height - 1), (255, 255, 0), 2)
+    cv2.putText(
+        model_display, "EfficientPhys context x1.3", (4, height - 5),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.27, (255, 255, 0), 1,
+    )
+    return np.hstack([display, model_display])
 
 
 def overlay_aligned_face(main_frame, aligned_display, max_size=288, margin=12):
     """把对齐人脸及算法ROI嵌入主画面右上角。"""
     output = main_frame.copy()
     frame_h, frame_w = output.shape[:2]
-    available = min(max_size, frame_h - 2 * margin, frame_w - 2 * margin)
-    if available < 48:
+    max_height = min(max_size, frame_h - 2 * margin)
+    max_width = min(max_size * 2, frame_w - 2 * margin)
+    scale = min(max_height / aligned_display.shape[0], max_width / aligned_display.shape[1])
+    if scale * min(aligned_display.shape[:2]) < 48:
         return output
-    inset = cv2.resize(aligned_display, (available, available), interpolation=cv2.INTER_NEAREST)
-    x1 = frame_w - margin - available
+    inset = cv2.resize(
+        aligned_display,
+        (round(aligned_display.shape[1] * scale), round(aligned_display.shape[0] * scale)),
+        interpolation=cv2.INTER_NEAREST,
+    )
+    inset_h, inset_w = inset.shape[:2]
+    x1 = frame_w - margin - inset_w
     y1 = margin
-    x2, y2 = x1 + available, y1 + available
+    x2, y2 = x1 + inset_w, y1 + inset_h
     output[y1:y2, x1:x2] = inset
     cv2.rectangle(output, (x1 - 2, y1 - 2), (x2 + 2, y2 + 2), (255, 255, 255), 2)
     cv2.putText(
-        output, "Aligned inputs", (x1, min(frame_h - 4, y2 + 18)),
+        output, "POS / EfficientPhys inputs", (x1, min(frame_h - 4, y2 + 18)),
         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1,
     )
     return output

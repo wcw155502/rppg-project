@@ -10,7 +10,7 @@ try:
 except ImportError:
     sys.modules["cv2"] = types.ModuleType("cv2")
 
-from core.roi_tracker import ROITracker
+from legacy.roi_tracker import ROITracker
 
 
 class FakeDetector:

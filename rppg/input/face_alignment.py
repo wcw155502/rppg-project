@@ -18,9 +18,23 @@ class FaceAligner:
         self.reference = REFERENCE_LANDMARKS_112 * (self.output_size / 112.0)
 
     def align(self, frame, landmarks):
+        return self._align_to_reference(frame, landmarks, self.reference)
+
+    def align_efficientphys_context(self, frame, landmarks, context_scale=1.0):
+        """生成仅供 EfficientPhys 使用的扩大视野对齐画布。
+
+        POS 始终使用 ``align`` 的标准五点模板。这里将目标关键点向画布中心
+        收缩，使同一张输出画布容纳 ``context_scale`` 倍的原始视野。
+        """
+        scale = max(1.0, float(context_scale))
+        center = (self.output_size - 1) / 2.0
+        expanded_reference = center + (self.reference - center) / scale
+        return self._align_to_reference(frame, landmarks, expanded_reference)
+
+    def _align_to_reference(self, frame, landmarks, reference):
         points = np.asarray(landmarks, dtype=np.float32).reshape(5, 2)
         matrix, inliers = cv2.estimateAffinePartial2D(
-            points, self.reference, method=cv2.LMEDS
+            points, reference, method=cv2.LMEDS
         )
         if matrix is None:
             return None, None
@@ -32,7 +46,7 @@ class FaceAligner:
             borderMode=cv2.BORDER_REFLECT_101,
         )
         projected = cv2.transform(points[None, ...], matrix)[0]
-        error = float(np.mean(np.linalg.norm(projected - self.reference, axis=1)))
+        error = float(np.mean(np.linalg.norm(projected - reference, axis=1)))
         return aligned, {
             "matrix": matrix,
             "mean_error_px": error,
@@ -64,11 +78,11 @@ class FaceAligner:
         right_outer = right_inner + (right_outer - right_inner) * right_shrink
         boxes["cheek_l"] = np.array([
             [left_outer, .50 * size], [left_inner, .51 * size],
-            [.37 * size, .69 * size], [left_outer + .02 * size, .71 * size],
+            [.37 * size, .72 * size], [left_outer + .02 * size, .74 * size],
         ], dtype=np.int32)
         boxes["cheek_r"] = np.array([
             [right_inner, .51 * size], [right_outer, .50 * size],
-            [right_outer - .02 * size, .71 * size], [.63 * size, .69 * size],
+            [right_outer - .02 * size, .74 * size], [.63 * size, .72 * size],
         ], dtype=np.int32)
         # 仅扩大 EfficientPhys 输入区域；POS 的额头/双颊多边形保持独立。
         # 区域受对齐画布边界约束，避免越界和引入虚假 padding。

@@ -7,11 +7,11 @@ import cv2
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from input_pipeline.config import build_input_config
-from input_pipeline.diagnostics import DiagnosticsRecorder
-from input_pipeline.processor import TrustedInputPipeline
-from input_pipeline.replay import VideoReplay
-from pipeline.rppg_pipeline import RPPGPipeline
+from rppg.input.config import build_input_config
+from rppg.input.diagnostics import DiagnosticsRecorder
+from rppg.input.processor import TrustedInputPipeline
+from rppg.input.replay import VideoReplay
+from runtime.rppg_pipeline import RPPGPipeline
 from utils.config_loader import load_config, setup_logging
 from scripts.run_camera_demo import draw_aligned_rois, overlay_aligned_face
 

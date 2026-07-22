@@ -2,9 +2,9 @@ import unittest
 
 import numpy as np
 
-from input_pipeline.timing import FrameResampler, TimingMonitor
-from input_pipeline.types import FramePacket
-from input_pipeline.config import build_input_config
+from rppg.input.timing import FrameResampler, TimingMonitor
+from rppg.input.types import FramePacket
+from rppg.input.config import build_input_config
 
 
 def packet(timestamp_ns, frame_id=0, dropped=0, value=0):
