@@ -18,7 +18,7 @@ from runtime.rppg_pipeline import RPPGPipeline
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_PATH = Path(os.getenv("RPPG_CONFIG", ROOT / "configs/inference_config.yaml"))
 PREVIEW_INTERVAL_NS = int(1e9 / float(os.getenv("RPPG_PREVIEW_FPS", "5")))
-JPEG_QUALITY = int(os.getenv("RPPG_PREVIEW_JPEG_QUALITY", "72"))
+JPEG_QUALITY = int(os.getenv("RPPG_PREVIEW_JPEG_QUALITY", "92"))
 
 app = FastAPI(title="rPPG Inference Service", version="0.1.0")
 logger = logging.getLogger(__name__)
