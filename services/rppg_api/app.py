@@ -1,6 +1,5 @@
 """Low-latency local WebSocket service for browser-originated JPEG frames."""
 import asyncio
-import base64
 import json
 import logging
 import os
@@ -67,11 +66,14 @@ class MeasurementWorker:
         if item.status.value != self.last_input_status:
             logger.info("Input status changed: session frame=%d status=%s", self.frame_id, item.status.value)
             self.last_input_status = item.status.value
+        previews = []
         if timestamp_ns - self.last_preview_ns >= PREVIEW_INTERVAL_NS:
             self.last_preview_ns = timestamp_ns
-            message["posPreview"] = self._encode_preview(self._draw_pos(item))
-            message["efficientPhysPreview"] = self._encode_preview(item.model_input_face)
-        return message
+            pos = self._encode_preview(self._draw_pos(item))
+            efficient = self._encode_preview(item.model_input_face)
+            if pos is not None: previews.append((1, pos))
+            if efficient is not None: previews.append((2, efficient))
+        return message, previews
 
     @staticmethod
     def _confidence(result):
@@ -107,7 +109,12 @@ class MeasurementWorker:
         if image is None:
             return None
         ok, encoded = cv2.imencode(".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY])
-        return base64.b64encode(encoded).decode("ascii") if ok else None
+        return encoded.tobytes() if ok else None
+
+
+def preview_packet(kind: int, payload: bytes) -> bytes:
+    # RPPG + version + preview kind; the remaining bytes are a complete JPEG.
+    return b"RPPG" + bytes((1, kind)) + payload
 
 
 @app.get("/health")
@@ -146,8 +153,11 @@ async def inference(websocket: WebSocket, session_id: str):
                 logger.debug("Processing inference frame: session=%s size=%d", session_id, len(payload))
                 result = await asyncio.to_thread(worker.process_jpeg, payload)
                 if result is not None:
-                    result["sessionId"] = session_id
-                    await websocket.send_text(json.dumps(result, separators=(",", ":")))
+                    measurement, previews = result
+                    measurement["sessionId"] = session_id
+                    await websocket.send_text(json.dumps(measurement, separators=(",", ":")))
+                    for kind, preview in previews:
+                        await websocket.send_bytes(preview_packet(kind, preview))
             except Exception as error:
                 logger.exception("Frame processing failed for session %s", session_id)
                 await websocket.send_json({"type": "MEASUREMENT_ERROR", "sessionId": session_id, "timestamp": int(time.time() * 1000), "status": "FAILED", "message": str(error)})
