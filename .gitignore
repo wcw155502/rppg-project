@@ -29,3 +29,6 @@ Thumbs.db
 # Backend is maintained as an independent Git repository.
 # Do not stage its files from the parent rPPG repository.
 /backend/
+
+# Frontend is maintained as an independent Git repository.
+/frontend/
